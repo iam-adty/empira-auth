@@ -33,10 +33,16 @@
     "scripts": {
         "test": "tools/test"
     },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "0.1.x-dev"
+        },
+        "//branch-alias": "Identical to every other library's, and dev/tools/module-contract checks that it stays identical: one manifest drifting to a different line is otherwise invisible until something resolves against it. No git tag is used, because a tag cannot move and would need a constraint bump and a re-lock in every consumer for each change. 0.x on its own would NOT have worked \u2014 Composer parses 0.1.0 as stable, so a 0.x tag would mark a release. See dev/planning/CHECKLIST.md \u00a76."
+    },
     "config": {
         "sort-packages": true
     },
-    "//repositories": "The framework is not on Packagist yet, so it resolves from its GitHub repository. `dev-main` tracks the branch rather than a release, which means a change to principle/main can break this package's install — tag before a change that matters. A local path repository used to sit here so a sibling checkout resolved without the network; it does not survive a clone, which is what this list replaces.",
+    "//repositories": "The framework is not on Packagist yet, so it resolves from its GitHub repository. `dev-main` tracks the branch rather than a release, which means a change to principle/main can break this package's install \u2014 tag before a change that matters. A local path repository used to sit here so a sibling checkout resolved without the network; it does not survive a clone, which is what this list replaces.",
     "repositories": [
         {
             "type": "vcs",
