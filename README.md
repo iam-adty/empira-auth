@@ -2,9 +2,40 @@
 
 Authentication for [Empira](../principle), as a **module**.
 
-```bash
-composer require iam-adty/empira-auth
+Not on Packagist yet, so Composer has to be told where to look. Add both packages
+to your `composer.json`:
+
+```json
+{
+    "repositories": [
+        { "type": "vcs", "url": "https://github.com/iam-adty/empira-principle.git" },
+        { "type": "vcs", "url": "https://github.com/iam-adty/empira-auth.git" }
+    ]
+}
 ```
+
+Then require **both**, naming the framework explicitly:
+
+```bash
+composer require iam-adty/empira-principle:dev-main iam-adty/empira-auth:dev-main
+```
+
+Naming the framework is not ceremony. Composer's default `minimum-stability` is
+`stable`, so a transitive dependency on a `dev-` branch is rejected — and this
+package's dependency on `empira-principle` is exactly that. Requiring it at the
+root is what makes it installable:
+
+    - iam-adty/empira-auth dev-main requires iam-adty/empira-principle dev-main
+      -> found iam-adty/empira-principle[dev-main, 0.1.x-dev (alias of dev-main)]
+      but it does not match your minimum-stability.
+
+`:dev-main` is needed because there is no release to satisfy; `^0.1@dev` works too,
+since both packages alias their branch as `0.1.x-dev`. When these reach Packagist,
+the repository block and the suffixes both go away.
+
+The alternative is `"minimum-stability": "dev"` in your root, which lets this
+install with one `require` — and also lets any *other* dependency's development
+branch through, which is a wider door than this problem needs.
 
 The framework does not ship authentication, does not know this package's
 classes, and boots without it. An application with no users has no `users` table
