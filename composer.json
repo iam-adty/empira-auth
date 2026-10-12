@@ -36,11 +36,11 @@
     "config": {
         "sort-packages": true
     },
+    "//repositories": "The framework is not on Packagist yet, so it resolves from its GitHub repository. `dev-main` tracks the branch rather than a release, which means a change to principle/main can break this package's install — tag before a change that matters. A local path repository used to sit here so a sibling checkout resolved without the network; it does not survive a clone, which is what this list replaces.",
     "repositories": [
         {
-            "name": "principle",
-            "type": "path",
-            "url": "../principle"
+            "type": "vcs",
+            "url": "git@github.com:iam-adty/empira-principle.git"
         }
     ]
 }
