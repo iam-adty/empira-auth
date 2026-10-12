@@ -264,7 +264,7 @@ namespace are load-bearing:
 
 ## Further reading
 
-- [AGENTS.md](AGENTS.md) — the conventions, and the traps above in short form
+- [AGENTS.md](https://github.com/iam-adty/empira-auth/blob/main/AGENTS.md) — the conventions, and the traps above in short form
 - [SECURITY.md](../principle/SECURITY.md) — the trust boundaries
 - [../principle/docs/data.md](../principle/docs/data.md) — where entities come from
 - [../principle/docs/routing.md](../principle/docs/routing.md) — attaching middleware to a route
