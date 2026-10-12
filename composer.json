@@ -1,0 +1,46 @@
+{
+    "name": "iam-adty/empira-auth",
+    "description": "Authentication for Empira, as a module: session and bearer guards, a Doctrine User, RequireAuth. Install it only if your application wants it.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "authentication",
+        "auth",
+        "htmx",
+        "session",
+        "bearer",
+        "module"
+    ],
+    "require": {
+        "php": "^8.4",
+        "doctrine/orm": "^3.5",
+        "iam-adty/empira-principle": "dev-main",
+        "psr/log": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Empira\\Auth\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Empira\\Auth\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "tools/test"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "repositories": [
+        {
+            "name": "principle",
+            "type": "path",
+            "url": "../principle"
+        }
+    ]
+}
