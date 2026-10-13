@@ -2,9 +2,8 @@
 #
 # Run the test suite.
 #
-# No Docker here: this package's tests run on SQLite and need no services, which
-# is the point of it being a module. The framework's suite needs PostgreSQL; this
-# one deliberately does not.
+# On the host PHP against SQLite, needing no server and no container — which is
+# the point of it being a module rather than an application.
 #
 # What this script does enforce is the part that matters for the gate — that the
 # suite **finished**. PHPUnit picks its exit status in ShellExitCodeCalculator,
