@@ -1,6 +1,6 @@
 # empira-auth
 
-Authentication for [Empira](../principle), as a **module**.
+Authentication for [Empira](https://github.com/iam-adty/empira-principle), as a **module**.
 
 Not on Packagist yet, so Composer has to be told where to look. Add both packages
 to your `composer.json`:
@@ -222,7 +222,7 @@ the day `User` became an entity, nothing above this line had to change.
 
 ## CSRF and what is exempt
 
-Read the framework's [docs/http.md](../principle/docs/http.md#csrf) for the
+Read the framework's [docs/http.md](https://github.com/iam-adty/empira-principle/blob/main/docs/http.md#csrf) for the
 mechanism. What matters here is *which* requests are exempt, and the answer is
 not "requests with a user".
 
@@ -249,7 +249,7 @@ report anything, the request has already been refused.
 - **Password hashing policy, registration, reset, email verification.** Those
   are application decisions with real consequences, and a framework that
   guesses them is a framework that gets them wrong.
-- **Rate limiting on `login()`.** Belongs at the edge; see [SECURITY.md](../principle/SECURITY.md).
+- **Rate limiting on `login()`.** Belongs at the edge; see [SECURITY.md](https://github.com/iam-adty/empira-principle/blob/main/SECURITY.md).
 - **Roles and permissions.** `User::$attributes` is yours; the framework does
   not know what an administrator is.
 
@@ -296,6 +296,6 @@ namespace are load-bearing:
 ## Further reading
 
 - [AGENTS.md](https://github.com/iam-adty/empira-auth/blob/main/AGENTS.md) — the conventions, and the traps above in short form
-- [SECURITY.md](../principle/SECURITY.md) — the trust boundaries
-- [../principle/docs/data.md](../principle/docs/data.md) — where entities come from
-- [../principle/docs/routing.md](../principle/docs/routing.md) — attaching middleware to a route
+- [SECURITY.md](https://github.com/iam-adty/empira-principle/blob/main/SECURITY.md) — the trust boundaries
+- [principle/docs/data.md](https://github.com/iam-adty/empira-principle/blob/main/docs/data.md) — where entities come from
+- [principle/docs/routing.md](https://github.com/iam-adty/empira-principle/blob/main/docs/routing.md) — attaching middleware to a route
