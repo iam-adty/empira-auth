@@ -6,10 +6,14 @@ namespace Empira\Auth;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Empira\Application;
+use Empira\Auth\Pages\LoginLayout;
+use Empira\ConfigurableModule;
+use Empira\Http\Middleware\VerifyCsrfToken;
 use Empira\Http\Request;
+use Empira\Http\Response;
 use Empira\Http\Session;
 use Empira\MigrationSource;
-use Empira\Module;
+use Empira\Routing\RouteCollection;
 use Empira\Security\Guard;
 
 /**
@@ -39,10 +43,20 @@ use Empira\Security\Guard;
  * or, if you would rather not think about it, pass `AuthModule::entityPath()`
  * alongside your own directories as you already do.
  */
-final class AuthModule implements Module, MigrationSource
+final class AuthModule implements ConfigurableModule, MigrationSource
 {
+    public const LOGIN_PATH = '/login';
+
+    public const LOGOUT_PATH = '/logout';
+
     /** @var list<Guard> */
     private readonly array $guards;
+
+    /** The page `GET /login` renders. */
+    private ?string $loginPage = LoginLayout::class;
+
+    /** Where to send somebody once they are signed in, or out. */
+    private string $redirectAfterLogin = '/';
 
     /**
      * @param list<Guard>      $guards   consulted in order; a session guard is
@@ -56,12 +70,14 @@ final class AuthModule implements Module, MigrationSource
      *                                     {@see forApplication()}
      * @param EntityManagerInterface|null $entities the application's entity
      *                                     manager, for building a provider
+     * @param class-string|null $loginPage the layout `GET /login` renders
      */
     public function __construct(
         array $guards = [],
         private readonly ?UserProvider $provider = null,
         ?Session $session = null,
         ?EntityManagerInterface $entities = null,
+        ?string $loginPage = null,
     ) {
         // An autowired module arrives with **no** guards, and that is not a
         // degraded mode — it is the mode `#[Modules(AuthModule::class)]` puts it
@@ -83,6 +99,47 @@ final class AuthModule implements Module, MigrationSource
         $this->guards = $session !== null && $entities !== null
             ? [new SessionGuard($session, new DoctrineUserProvider($entities))]
             : [];
+
+        if ($loginPage !== null) {
+            $this->loginPage = $loginPage;
+        }
+    }
+
+    /**
+     * The page `GET /login` renders.
+     *
+     * An application almost always wants its own, because this package cannot
+     * know what the rest of its pages look like — a layout is the application's
+     * business and a module that guessed would be shipping somebody else's
+     * design into their application.
+     *
+     *     #[Modules(AuthModule::class, login: App\Pages\LoginLayout::class)]
+     *
+     * Left unset, this package's own {@see LoginLayout} is used: plain, and it
+     * works. It is the floor, not the intention.
+     *
+     * @param class-string $page a {@see \Empira\View\Layout} with a `#[Route('/login')]`
+     */
+    public function usePage(string $page): void
+    {
+        $this->loginPage = $page;
+    }
+
+    /**
+     * {@see ConfigurableModule}, so an application can pass this without naming
+     * the class.
+     *
+     * @param array<string, mixed> $options
+     */
+    public function configure(array $options): void
+    {
+        if (isset($options['login']) && is_string($options['login'])) {
+            $this->usePage($options['login']);
+        }
+
+        if (isset($options['redirect']) && is_string($options['redirect'])) {
+            $this->redirectAfterLogin = $options['redirect'];
+        }
     }
 
     public function register(Application $app): void
@@ -102,7 +159,58 @@ final class AuthModule implements Module, MigrationSource
         $app->container()->bind(Auth::class, function ($container) use ($app): Auth {
             return new Auth($app->guards(), $container->get(Request::class), $this->provider);
         });
+
+        $this->routes($app);
     }
+
+    /**
+ * The three URLs this module publishes.
+ *
+ * Skipped individually when the application has already claimed one, checked
+ * with {@see RouteCollection::match()} rather than by name. A name check would
+ * be useless: an application's page is a different class with a different name,
+ * and the only thing the two share is the URL.
+ *
+ * **The POSTs keep CSRF, and the middleware is attached here.** They change
+ * state, which is what the token is for, and an application that has not
+ * installed {@see VerifyCsrfToken} globally would otherwise get a login form
+ * that can be forged against. A module that publishes a POST protects its own.
+ */
+private function routes(Application $app): void
+    {
+        $routes = $app->routes();
+
+        if ($routes->match('GET', self::LOGIN_PATH) === null) {
+            // A layout class *name*, which is the framework's own "this URL
+            // renders this page" form. The page is therefore rendered by
+            // `Application::view()`, with the application's session and CSRF
+            // wired in — and replacing this string replaces the handler's target
+            // rather than competing with it for the path.
+            $routes->get(self::LOGIN_PATH, $this->loginPage, 'auth.login');
+        }
+
+        $login = new LoginHandler($this->loginPage, $this->redirectAfterLogin);
+        $logout = new LogoutHandler($this->redirectAfterLogin);
+
+        $routes->group('', function (RouteCollection $routes) use ($login, $logout): void {
+            if ($routes->match('POST', self::LOGIN_PATH) === null) {
+                $routes->post(
+                    self::LOGIN_PATH,
+                    static fn(Request $r, Application $a, Auth $auth): Response => $login->handle($r, $a, $auth),
+                    'auth.login.attempt',
+                );
+            }
+
+            if ($routes->match('POST', self::LOGOUT_PATH) === null) {
+                $routes->post(
+                    self::LOGOUT_PATH,
+                    static fn(Auth $auth): Response => $logout->handle($auth),
+                    'auth.logout',
+                );
+            }
+        }, middleware: [VerifyCsrfToken::class]);
+    }
+
 
     /**
      * The `users` table, in this package's own namespace.
