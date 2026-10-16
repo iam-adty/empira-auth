@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Empira\Auth;
 
+use Doctrine\ORM\EntityManagerInterface;
 use Empira\Application;
 use Empira\Http\Request;
+use Empira\Http\Session;
 use Empira\MigrationSource;
 use Empira\Module;
 use Empira\Security\Guard;
@@ -39,13 +41,48 @@ use Empira\Security\Guard;
  */
 final class AuthModule implements Module, MigrationSource
 {
+    /** @var list<Guard> */
+    private readonly array $guards;
+
     /**
-     * @param list<Guard> $guards consulted in order; a session guard is what
-     *                          makes `login()` possible, so include one
+     * @param list<Guard>      $guards   consulted in order; a session guard is
+     *                                     what makes `login()` possible, so
+     *                                     include one
+     * @param UserProvider|null $provider the one `Auth::attempt()` checks
+     *                                     credentials against; usually the same
+     *                                     provider the first guard uses
+     * @param Session|null     $session  the application's *own* session, which
+     *                                     is what a guard must read — see
+     *                                     {@see forApplication()}
+     * @param EntityManagerInterface|null $entities the application's entity
+     *                                     manager, for building a provider
      */
     public function __construct(
-        private readonly array $guards = [],
+        array $guards = [],
+        private readonly ?UserProvider $provider = null,
+        ?Session $session = null,
+        ?EntityManagerInterface $entities = null,
     ) {
+        // An autowired module arrives with **no** guards, and that is not a
+        // degraded mode — it is the mode `#[Modules(AuthModule::class)]` puts it
+        // in. The container will not complain: `array $guards = []` is a
+        // perfectly good default, so the module would register, bind `Auth`, and
+        // silently never find a user. Nothing in any log, and a login form that
+        // reports "wrong password" forever.
+        //
+        // So it builds the standard composition itself when it was not given one,
+        // from the two services the framework binds before modules register.
+        // An explicit list still wins, so nothing that passes guards today
+        // changes.
+        if ($guards !== []) {
+            $this->guards = $guards;
+
+            return;
+        }
+
+        $this->guards = $session !== null && $entities !== null
+            ? [new SessionGuard($session, new DoctrineUserProvider($entities))]
+            : [];
     }
 
     public function register(Application $app): void
@@ -63,7 +100,7 @@ final class AuthModule implements Module, MigrationSource
         // whichever request first resolved it — the worker trap the framework's
         // own per-request binding exists to avoid.
         $app->container()->bind(Auth::class, function ($container) use ($app): Auth {
-            return new Auth($app->guards(), $container->get(Request::class));
+            return new Auth($app->guards(), $container->get(Request::class), $this->provider);
         });
     }
 
@@ -122,9 +159,13 @@ final class AuthModule implements Module, MigrationSource
      */
     public static function forApplication(Application $app, ?Guard ...$others): self
     {
-        return new self([
-            new SessionGuard($app->session(), new DoctrineUserProvider($app->entities())),
-            ...$others,
-        ]);
+        $users = new DoctrineUserProvider($app->entities());
+
+        return new self(
+            self::guards(new SessionGuard($app->session(), $users), ...$others),
+            $users,
+            $app->session(),
+            $app->entities(),
+        );
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Empira\Auth\Tests;
 
+use Doctrine\ORM\EntityManagerInterface;
 use Empira\Application;
 use Empira\Auth\Auth;
 use Empira\Auth\AuthModule;
@@ -14,6 +15,7 @@ use Empira\Http\Request;
 use Empira\Http\Response;
 use Empira\Security\RequestUser;
 use Empira\State\NullState;
+use Empira\State\SessionState;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -99,6 +101,87 @@ final class AuthModuleTest extends TestCase
      * The `users` table ships with this package, so an application that installs
      * auth gets its schema without writing a migration.
      */
+    /**
+     * The module built by the container, with nothing passed.
+     *
+     * `#[Modules(AuthModule::class)]` resolves the class and lets the container
+     * construct it, so this is the construction that path uses — and the one
+     * that used to produce a module with **no guards at all**, silently.
+     */
+    public function testAnAutowiredModuleBuildsItsOwnSessionGuard(): void
+    {
+        $app = new Application(self::SECRET, new SessionState());
+        $app->container()->instance(EntityManagerInterface::class, $this->entities());
+
+        $guards = self::guardsOf($app->container()->get(AuthModule::class));
+
+        self::assertCount(1, $guards, 'an autowired module must not be left without guards');
+        self::assertInstanceOf(SessionGuard::class, $guards[0]);
+    }
+
+    /**
+     * With no entity manager bound there is no provider to build one from, and
+     * the module says so with no guards rather than inventing a half-working one.
+     * An application that calls `orm()` after registering modules gets the
+     * dependency; one that never does has no users to authenticate.
+     */
+    public function testAnAutowiredModuleWithNoEntityManagerHasNoGuards(): void
+    {
+        $app = new Application(self::SECRET, new SessionState());
+
+        self::assertSame([], self::guardsOf($app->container()->get(AuthModule::class)));
+    }
+
+    public function testExplicitGuardsStillWinOverTheBuiltInComposition(): void
+    {
+        $app = new Application(self::SECRET, new SessionState());
+        $guard = new SessionGuard($app->session(), $this->users());
+        $module = new AuthModule([$guard]);
+
+        self::assertSame([$guard], self::guardsOf($module));
+    }
+
+    public function testAnAutowiredModuleWorksAfterTheApplicationHasCalledOrm(): void
+    {
+        $app = new Application(self::SECRET, new SessionState());
+        $app->orm(['driver' => 'sqlite', 'database' => ':memory:'], [AuthModule::entityPath()]);
+
+        // The ordering an attribute-driven application uses: `orm()` first, so
+        // the entity manager exists, then the module resolved by class name. This
+        // is the whole reason self-sufficiency was worth doing.
+        $guards = self::guardsOf($app->container()->get(AuthModule::class));
+
+        self::assertCount(1, $guards);
+        self::assertInstanceOf(SessionGuard::class, $guards[0]);
+    }
+
+    /**
+     * `attempt()` is the primitive a login page needs and the reason `Auth` was
+     * given a provider: the module could verify a password but nothing could ask
+     * it to.
+     */
+    public function testAttemptSignsInTheRightPasswordAndRefusesTheWrongOne(): void
+    {
+        $app = $this->appWithProvider('correct horse');
+        $app->handle(new Request('GET', '/who'));
+
+        $auth = $app->container()->get(Auth::class);
+
+        self::assertNull($auth->attempt('nobody@example.com', 'correct horse'), 'no such user must refuse');
+        self::assertNull($auth->attempt('ada@example.com', 'wrong'), 'the wrong password must refuse');
+        self::assertSame(7, $auth->attempt('ada@example.com', 'correct horse')?->id(), 'the right password must sign in');
+    }
+
+    public function testAttemptRefusesWhenNoProviderIsConfigured(): void
+    {
+        $app = $this->app();
+        $app->handle(new Request('GET', '/who'));
+
+        // Not an exception: a caller asking a question gets an answer, and the
+        // answer a login form can act on is "that did not work".
+        self::assertNull($app->container()->get(Auth::class)->attempt('ada@example.com', 'anything'));
+    }
+
     public function testTheModuleContributesItsMigrations(): void
     {
         $module = new AuthModule();
@@ -171,5 +254,51 @@ final class AuthModuleTest extends TestCase
                 return false;
             }
         };
+    }
+
+    /**
+     * @return list<\Empira\Security\Guard>
+     */
+    private static function guardsOf(AuthModule $module): array
+    {
+        return (new \ReflectionProperty(AuthModule::class, 'guards'))->getValue($module);
+    }
+
+    private function entities(): EntityManagerInterface
+    {
+        return $this->createMock(EntityManagerInterface::class);
+    }
+
+    /**
+     * An application whose provider accepts exactly one password.
+     */
+    private function appWithProvider(string $password): Application
+    {
+        $users = new class($password) implements UserProvider {
+            public function __construct(private readonly string $password)
+            {
+            }
+
+            public function byId(int|string $id): ?User
+            {
+                return (string) $id === '7' ? AuthTest::persisted(7, 'ada@example.com', 'Ada') : null;
+            }
+
+            public function byCredential(string $credential): ?User
+            {
+                return $credential === 'ada@example.com' ? AuthTest::persisted(7, 'ada@example.com', 'Ada') : null;
+            }
+
+            public function verifyPassword(User $user, string $password): bool
+            {
+                return $password === $this->password;
+            }
+        };
+
+        $app = new Application(self::SECRET, new SessionState());
+
+        $app->module(new AuthModule([new SessionGuard($app->session(), $users)], $users));
+
+        return $app;
     }
 }

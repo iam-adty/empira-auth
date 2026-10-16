@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Empira\Auth;
 
+use Empira\Http\Request;
 use Empira\Security\RequestUser;
 
 /**
@@ -22,6 +23,7 @@ use Empira\Security\RequestUser;
  *
  *     $auth->login($user);   // writes
  *     $auth->logout();       // writes
+ *     $auth->attempt('a@b.c', $password);   // checks, then writes
  *
  * An instance is bound per request by {@see \Empira\Application}, so there is
  * nothing to reset and nothing to leak: a fresh instance cannot remember the
@@ -29,6 +31,21 @@ use Empira\Security\RequestUser;
  */
 final class Auth extends RequestUser
 {
+    /**
+ * @param list<Guard>       $guards   consulted in order
+ * @param Request|null      $request  the dispatch this façade answers for
+ * @param UserProvider|null $provider what `attempt()` checks credentials
+ *                                     against; null and `attempt()` always
+ *                                     answers null
+ *
+ * `$provider` is **last**, not second, so `new Auth($guards, $request)` keeps
+ * meaning what it meant before this module could check a password.
+ */
+public function __construct(array $guards = [], ?Request $request = null, private readonly ?UserProvider $provider = null)
+    {
+        parent::__construct($guards, $request);
+    }
+
     /**
      * The {@see User} making this request, or null when there is none.
      *
@@ -41,6 +58,35 @@ final class Auth extends RequestUser
         $user = parent::user();
 
         return $user instanceof User ? $user : null;
+    }
+
+    /**
+     * Check a credential and a password, and sign the user in if both hold.
+     *
+     * Returns the {@see User} on success and **null on every failure** — no such
+     * credential, or the wrong password, or no provider configured at all.
+     *
+     * That one answer for every failure is the point. Distinguishing them tells
+     * an attacker which half of a guess was right, and a login form is the most
+     * attacked form there is. The cost is that a person who mistypes their email
+     * is told the same thing as a person who mistypes their password, which is
+     * the right trade and is why this returns null rather than a reason.
+     *
+     * Returns null when no {@see UserProvider} is configured rather than
+     * throwing: a module installed without one has no way to authenticate, and a
+     * caller asking a question deserves an answer rather than an exception.
+     */
+    public function attempt(string $credential, string $password): ?User
+    {
+        $user = $this->provider?->byCredential($credential);
+
+        if ($user === null || !$this->provider->verifyPassword($user, $password)) {
+            return null;
+        }
+
+        $this->login($user);
+
+        return $user;
     }
 
     /**
