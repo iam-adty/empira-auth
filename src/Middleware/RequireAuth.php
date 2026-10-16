@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Empira\Auth\Middleware;
 
-use Closure;
 use Empira\Auth\Auth;
 use Empira\Http\Middleware;
 use Empira\Http\Request;
-use Empira\Http\Response;
 use Empira\Routing\HttpException;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Refuses a request that has no user behind it.
@@ -40,12 +41,17 @@ final class RequireAuth implements Middleware
     {
     }
 
-    public function handle(Request $request, Closure $next): Response
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if (($this->auth ?? new Auth([], $request))->guest()) {
+        // Narrowed, not typed: PSR-15 fixes the parameter at the interface and
+        // PHP will not let it be narrower, so `Request` is recovered here rather
+        // than declared. An Empira pipeline always passes one.
+        $empira = Request::of($request);
+
+        if (($this->auth ?? new Auth([], $empira))->guest()) {
             throw HttpException::unauthorized('Sign in to continue.');
         }
 
-        return $next($request);
+        return $handler->handle($empira);
     }
 }
