@@ -7,6 +7,7 @@ namespace Empira\Auth\Tests;
 use Empira\Application;
 use Empira\Auth\Auth;
 use Empira\Auth\AuthModule;
+use Empira\Auth\LoginPage;
 use Empira\Auth\SessionGuard;
 use Empira\Auth\User;
 use Empira\Auth\UserProvider;
@@ -131,6 +132,47 @@ final class LoginTest extends TestCase
     }
 
     /**
+     * The join: an attribute an application declares reaches the module.
+     *
+     * Everything else here calls `usePage()` by hand, which proves the setter
+     * works and proves nothing about whether `#[LoginPage]` reaches it. That is
+     * the same gap the DebugBar toolbar shipped through — a producer, a
+     * consumer, and no assertion that the first's output is what the second
+     * reads — and it is invisible until an application uses the attribute for
+     * real and gets the wrong page.
+     *
+     * Declared on a subclass of `Application`, because the collection lives in
+     * `installModules()` and is protected.
+     */
+    public function testTheLoginPageAttributeReachesTheModule(): void
+    {
+        $app = new DeclaredPage();
+
+        $body = $app->handle(new Request('GET', '/login'))->body();
+
+
+        self::assertStringContainsString('the application draws this', $body);
+        self::assertStringNotContainsString(
+            'name="email"',
+            $body,
+            'the module used its own page, so the attribute never reached it'
+        );
+    }
+
+    /**
+     * Declaring nothing is not an error — an absent attribute means "no
+     * opinion", and the module falls back to the page it ships.
+     */
+    public function testAnApplicationDeclaringNoPageGetsTheModulesOwn(): void
+    {
+        $app = new NoDeclaredPage();
+
+        $body = $app->handle(new Request('GET', '/login'))->body();
+
+        self::assertStringContainsString('name="email"', $body);
+    }
+
+    /**
      * A URL the application has already claimed is left alone, rather than
      * fighting for it. The check is by path, because the two pages are different
      * classes with different names — so the application's route has to be in
@@ -218,5 +260,53 @@ final class LoginTest extends TestCase
                 return $password === $this->password;
             }
         };
+    }
+}
+
+// ------------------------------------------------------- the attribute, end to end
+
+/**
+ * One boot, so the two fixtures below differ only in their attributes.
+ *
+ * `self::SECRET` cannot reach in from `LoginTest` — a class constant is scoped
+ * to its own class and these are separate declarations — which is the same
+ * reason an anonymous class cannot inherit one.
+ */
+abstract class BootingApplication extends Application
+{
+    private const SECRET = 'test-secret-that-is-long-enough-for-hmac!!';
+
+    public function __construct()
+    {
+        parent::__construct(self::SECRET, new SessionState(), csrf: new Csrf());
+    }
+}
+
+/**
+ * An application that declares its login page the way a real one would.
+ *
+ * Extends `Application` rather than using it because `installModules()` is
+ * protected — the seam under test is the one a subclass reaches, and a public
+ * test double would be testing a different class with the same body.
+ */
+#[LoginPage(ApplicationPage::class)]
+final class DeclaredPage extends BootingApplication
+{
+    public function __construct()
+    {
+        parent::__construct();
+
+        $this->installModules([AuthModule::class]);
+    }
+}
+
+/** The same application with no opinion, which must fall back rather than fail. */
+final class NoDeclaredPage extends BootingApplication
+{
+    public function __construct()
+    {
+        parent::__construct();
+
+        $this->installModules([AuthModule::class]);
     }
 }
